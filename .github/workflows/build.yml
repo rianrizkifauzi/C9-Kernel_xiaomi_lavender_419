@@ -916,73 +916,15 @@ jobs:
           echo "=== Patching lavender DTS for NON-DYNAMIC (legacy) fstab ==="
           DTSI="arch/arm64/boot/dts/vendor/qcom/xiaomi/longcheer/lavender/lavender-base.dtsi"
           if [ ! -f "$DTSI" ]; then
-            echo "::warning::lavender-base.dtsi not found at expected path, searching..."
+            echo "::warning::lavender-base.dtsi not at expected path, searching..."
             DTSI=$(find arch/arm64/boot/dts -name "lavender-base.dtsi" 2>/dev/null | head -1)
-            if [ -z "$DTSI" ]; then
-              echo "::error::lavender-base.dtsi not found anywhere"
-              exit 1
-            fi
+            [ -z "$DTSI" ] && { echo "::error::lavender-base.dtsi not found"; exit 1; }
           fi
           echo "Found DTSI: $DTSI"
-
-          # Show current android/fstab node
-          echo "=== Current android section (before) ==="
-          grep -n -A40 "android {" "$DTSI" | head -50 || true
-
-          # Python rewrite: replace entire 'fstab { ... }' block with non-dynamic version
-          python3 - "$DTSI" <<'PYEOF'
-import sys, re
-path = sys.argv[1]
-with open(path) as f:
-    content = f.read()
-
-# Non-dynamic fstab: system + vendor mounted directly by-name, no 'logical' flag
-new_fstab = '''		fstab {
-			compatible = "android,fstab";
-			system {
-				compatible = "android,system";
-				dev = "/dev/block/bootdevice/by-name/system";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait,avb";
-				status = "ok";
-			};
-			vendor {
-				compatible = "android,vendor";
-				dev = "/dev/block/bootdevice/by-name/vendor";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait,avb";
-				status = "ok";
-			};
-		};'''
-
-# Match the fstab { ... }; block (balanced-ish via regex for this known structure)
-# fstab block ends with '};' that closes it; we match from 'fstab {' to the matching close
-pattern = re.compile(r'\t*fstab\s*\{.*?\n\t*\};', re.DOTALL)
-if pattern.search(content):
-    content = pattern.sub(new_fstab, content, count=1)
-    print("Replaced existing fstab block with non-dynamic version")
-else:
-    # No fstab block exists -> inject inside 'android { ... }' after vbmeta
-    # Find 'android {' then insert after first '};' (vbmeta close)
-    m = re.search(r'(android\s*\{.*?vbmeta\s*\{.*?\};)', content, re.DOTALL)
-    if m:
-        inject_point = m.end()
-        content = content[:inject_point] + "\n\n" + new_fstab + content[inject_point:]
-        print("Injected non-dynamic fstab block after vbmeta")
-    else:
-        print("WARNING: could not find android/vbmeta node to inject fstab")
-        sys.exit(1)
-
-with open(path, 'w') as f:
-    f.write(content)
-print("DTS fstab patch done")
-PYEOF
-
+          python3 "$GITHUB_WORKSPACE/builder/assets/fstab_patch.py" "$DTSI"
           echo ""
-          echo "=== After patch ==="
-          grep -n -A30 "fstab {" "$DTSI" | head -40 || true
+          echo "=== After patch (fstab section) ==="
+          grep -n -A20 "fstab {" "$DTSI" | head -30 || true
 
       - name: Build kernel
         working-directory: kernel_source
