@@ -6,19 +6,19 @@ on:
       kernel_repo:
         description: 'Kernel source repo (owner/name)'
         required: true
-        default: 'pix106/nexus_kernel_xiaomi_lavender-4.19'
+        default: 'kucingoranye/android_kernel_xiaomi_sdm660_419'
       kernel_branch:
-        description: 'Kernel source branch (4.19-rebase-test=default Nexus base | ImSpiDy R1=alternative)'
+        description: 'Kernel source branch (kernelsu-next-3.1.0-susfs-2.1.0=pre-patched KSU+SUSFS RECOMMENDED | android-4.19-stable=clean)'
         required: true
-        default: '4.19-rebase-test'
+        default: 'kernelsu-next-3.1.0-susfs-2.1.0'
       kernel_commit:
         description: 'Pin kernel source to specific commit SHA (use "head" for latest).'
         required: true
         default: 'head'
       defconfig:
-        description: 'Defconfig name (under arch/arm64/configs/). lavender_defconfig = Redmi Note 7 specific.'
+        description: 'Defconfig name (under arch/arm64/configs/). vendor/lavender-perf_defconfig = lavender specific.'
         required: true
-        default: 'lavender_defconfig'
+        default: 'vendor/lavender-perf_defconfig'
       ksun_repo:
         description: 'KernelSU implementation (KernelSU-Next/KernelSU-Next = upstream | ThRE-Team/KernelSU-Next = ThRE fork)'
         required: true
@@ -42,11 +42,17 @@ on:
         type: choice
         options: ['true', 'false']
       hook_strategy:
-        description: 'Hook strategy: kucingoranye_patch (apply .patch file via git apply, RECOMMENDED), full (5 hooks awk inject), minimal (1 hook), none'
+        description: 'Hook strategy: none (RECOMMENDED if kernel pre-patched like kucingoranye branch) | kucingoranye_patch (apply patch) | minimal | full'
         required: true
-        default: 'kucingoranye_patch'
+        default: 'none'
         type: choice
         options: ['kucingoranye_patch', 'minimal', 'full', 'none']
+      pre_patched_kernel:
+        description: 'Skip cloning KernelSU + skip applying patches if true (set true for branches that include KSU+SUSFS pre-integrated like kucingoranye kernelsu-next-3.1.0-susfs-2.1.0)'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
       hook_patch_file:
         description: 'kucingoranye patch file (kernel-4.19_5.4.patch for 4.19/5.4, kernel-4.4_4.9.patch for 4.4/4.9, kernel-4.14.patch for 4.14)'
         required: false
@@ -280,6 +286,7 @@ jobs:
           }
 
       - name: Clone KernelSU
+        if: ${{ inputs.pre_patched_kernel != 'true' }}
         working-directory: kernel_source
         run: |
           set -e
@@ -307,6 +314,7 @@ jobs:
           echo "KernelSU directory: ${KSU_DIR}, version: ${KSUN_VER}"
 
       - name: Detect KSU hooks integration mode
+        if: ${{ inputs.pre_patched_kernel != 'true' }}
         working-directory: kernel_source
         run: |
           set -e
@@ -332,7 +340,7 @@ jobs:
           fi
 
       - name: Apply kucingoranye/kernel_patches (manual_hook + path_umount backport)
-        if: ${{ inputs.hook_strategy == 'kucingoranye_patch' }}
+        if: ${{ inputs.hook_strategy == 'kucingoranye_patch' && inputs.pre_patched_kernel != 'true' }}
         working-directory: kernel_source
         run: |
           set -e
@@ -876,7 +884,7 @@ jobs:
           fi
 
       - name: Force KSU_VERSION via Kbuild override (fix version=0 bug)
-        if: ${{ contains(inputs.ksun_repo, 'KernelSU-Next') && inputs.ksun_branch != 'next' }}
+        if: ${{ contains(inputs.ksun_repo, 'KernelSU-Next') && inputs.ksun_branch != 'next' && inputs.pre_patched_kernel != 'true' }}
         working-directory: kernel_source
         run: |
           set -e
