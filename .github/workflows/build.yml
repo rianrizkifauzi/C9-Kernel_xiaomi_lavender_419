@@ -253,24 +253,32 @@ jobs:
           echo "=== Verify extracted contents ==="
           ls -la toolchain/clang/ | head -10
           echo ""
-          echo "=== Looking for bin folder ==="
-          # Some toolchain tars extract into a subfolder, find clang binary
-          CLANG_BIN=$(find toolchain/clang -name "clang" -type f -executable 2>/dev/null | head -1)
+          echo "=== Looking for clang binary ==="
+          # Some clang binaries are symlinks - use -L follow + relax type filter
+          CLANG_BIN=$(find -L toolchain/clang -name "clang" 2>/dev/null | grep -E "/bin/clang$" | head -1)
+          if [ -z "$CLANG_BIN" ]; then
+            # Fallback: any file/symlink named clang
+            CLANG_BIN=$(find -L toolchain/clang -name "clang" 2>/dev/null | head -1)
+          fi
           if [ -z "$CLANG_BIN" ]; then
             echo "::error::clang binary not found after extraction"
             find toolchain/clang -maxdepth 3 -type d | head -20
+            echo "Files in bin/ folder:"
+            ls -la toolchain/clang/bin/ 2>/dev/null || echo "(no bin folder)"
             exit 1
           fi
+          # Resolve symlink to actual file if any
           CLANG_DIR=$(dirname "$CLANG_BIN")
           echo "Found clang at: $CLANG_BIN"
           echo "Clang bin dir: $CLANG_DIR"
-          # If clang is not directly in toolchain/clang/bin/, create symlink or move
-          if [ "$CLANG_DIR" != "toolchain/clang/bin" ]; then
+          ls -la "$CLANG_BIN" || true
+
+          # If extraction added a wrapper folder (e.g. toolchain/clang/neutron-clang/bin/clang)
+          # we need to move contents up so toolchain/clang/bin/clang works
+          if [ "$CLANG_DIR" != "toolchain/clang/bin" ] && [ "$CLANG_DIR" != "./toolchain/clang/bin" ]; then
             echo "=== Reorganize toolchain layout ==="
-            # Find the parent that has 'bin' folder
             TC_ROOT=$(dirname "$CLANG_DIR")
             if [ -d "$TC_ROOT/bin" ] && [ -d "$TC_ROOT/lib" ]; then
-              # Move contents up to toolchain/clang/
               shopt -s dotglob
               mv "$TC_ROOT"/* toolchain/clang/ 2>/dev/null || true
               shopt -u dotglob
@@ -278,12 +286,19 @@ jobs:
           fi
 
           echo "=== Final structure ==="
-          ls toolchain/clang/bin/ 2>/dev/null | head -10 || echo "(bin/ not found at expected path)"
-          toolchain/clang/bin/clang --version || {
-            # Last resort: full search
-            echo "::warning::clang at toolchain/clang/bin/clang not working, searching..."
-            find toolchain/clang -name "clang" -executable -type f 2>/dev/null
-          }
+          ls -la toolchain/clang/bin/ 2>/dev/null | head -15 || echo "(bin/ not found)"
+          # Test clang works (use both file path approaches)
+          if [ -e toolchain/clang/bin/clang ]; then
+            chmod +x toolchain/clang/bin/clang 2>/dev/null || true
+            toolchain/clang/bin/clang --version || {
+              echo "::warning::Direct exec failed, trying via PATH"
+              PATH="$PWD/toolchain/clang/bin:$PATH" clang --version
+            }
+          else
+            echo "::error::Final check: bin/clang doesn't exist"
+            find toolchain/clang -name "clang" 2>/dev/null
+            exit 1
+          fi
 
       - name: Clone KernelSU
         if: ${{ inputs.pre_patched_kernel != 'true' }}
