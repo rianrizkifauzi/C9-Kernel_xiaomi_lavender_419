@@ -221,10 +221,34 @@ jobs:
           echo "Device codename: ${DEVICE_CODENAME}"
           echo "DEVICE_CODENAME=${DEVICE_CODENAME}" >> $GITHUB_ENV
 
-      - name: Clone toolchain (Proton Clang)
+      - name: Clone toolchain (Neutron Clang)
         run: |
-          mkdir -p toolchain
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git toolchain/clang
+          set -e
+          mkdir -p toolchain/clang
+          echo "=== Download Neutron Clang via antman ==="
+          # antman is the recommended sync tool for Neutron Clang
+          # Fallback: direct download latest release tarball
+          NEUTRON_TAG=$(curl -s "https://api.github.com/repos/Neutron-Toolchains/clang-build-catalogue/releases/latest" | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+          if [ -z "$NEUTRON_TAG" ]; then
+            echo "::warning::Failed to fetch latest Neutron tag, using known good 26052026"
+            NEUTRON_TAG="26052026"
+          fi
+          echo "Neutron Clang tag: $NEUTRON_TAG"
+
+          NEUTRON_URL="https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/${NEUTRON_TAG}/neutron-clang-${NEUTRON_TAG}.tar.zst"
+          echo "Downloading: $NEUTRON_URL"
+
+          curl -sSL "$NEUTRON_URL" -o /tmp/neutron-clang.tar.zst
+          ls -lah /tmp/neutron-clang.tar.zst
+
+          echo "=== Extract Neutron Clang ==="
+          # zstd is in apt deps already
+          tar -I 'zstd -d' -xf /tmp/neutron-clang.tar.zst -C toolchain/clang
+          rm -f /tmp/neutron-clang.tar.zst
+
+          echo "=== Verify ==="
+          ls toolchain/clang/bin/ | head -20
+          toolchain/clang/bin/clang --version
 
       - name: Clone KernelSU
         working-directory: kernel_source
