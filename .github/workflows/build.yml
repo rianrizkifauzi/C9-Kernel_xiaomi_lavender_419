@@ -733,7 +733,7 @@ jobs:
           done
 
       - name: Clone SUSFS
-        if: ${{ inputs.enable_susfs == 'true' }}
+        if: ${{ inputs.enable_susfs == 'true' && inputs.pre_patched_kernel != 'true' }}
         run: |
           git clone --depth=1 -b "${{ inputs.susfs_branch }}" \
             https://gitlab.com/simonpunk/susfs4ksu.git susfs4ksu
@@ -741,7 +741,7 @@ jobs:
           echo "SUSFS_VERSION=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Apply SUSFS patches
-        if: ${{ inputs.enable_susfs == 'true' }}
+        if: ${{ inputs.enable_susfs == 'true' && inputs.pre_patched_kernel != 'true' }}
         run: |
           set -e
           cd kernel_source
