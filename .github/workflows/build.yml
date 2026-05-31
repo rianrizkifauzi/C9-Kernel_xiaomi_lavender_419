@@ -53,6 +53,12 @@ on:
         default: 'true'
         type: choice
         options: ['true', 'false']
+      use_llvm_linker:
+        description: 'Use LLD (LLVM linker) instead of GNU ld. Required for modern 4.19+ kernels with kucingoranye-style Makefile (vdso uses -m llvm).'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
       hook_patch_file:
         description: 'kucingoranye patch file (kernel-4.19_5.4.patch for 4.19/5.4, kernel-4.4_4.9.patch for 4.4/4.9, kernel-4.14.patch for 4.14)'
         required: false
@@ -941,6 +947,12 @@ jobs:
           LINKER_OVERRIDE=""
           LTO_MODE="${{ inputs.enable_lto }}"
           POLLY_ENABLED="${{ inputs.enable_polly }}"
+
+          # Use LLD (LLVM linker) for kernels that need it (4.19+ kucingoranye style)
+          if [ "${{ inputs.use_llvm_linker }}" = "true" ]; then
+            echo "🔗 Using LLD (LLVM linker) instead of GNU ld"
+            LINKER_OVERRIDE="LD=ld.lld LLVM=1 LLVM_IAS=1"
+          fi
 
           if [ "$LTO_MODE" = "thin" ]; then
             echo "⚡ ThinLTO enabled"
