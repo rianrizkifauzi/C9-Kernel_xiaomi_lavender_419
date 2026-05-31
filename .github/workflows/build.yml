@@ -917,6 +917,13 @@ jobs:
           echo ""
 
           MAKE_DCFG=$(basename "${DCFG_NAME}")
+          # If defconfig is in vendor/ subfolder, kbuild won't find it directly
+          # Copy it to root arch/arm64/configs/ so make can use it
+          if echo "${DCFG_NAME}" | grep -q '^vendor/'; then
+            echo "=== Defconfig in vendor/ subfolder, copy to root for make ==="
+            cp "arch/arm64/configs/${DCFG_NAME}" "arch/arm64/configs/${MAKE_DCFG}"
+            echo "  Copied: arch/arm64/configs/${DCFG_NAME} -> arch/arm64/configs/${MAKE_DCFG}"
+          fi
           echo "=== Generating .config from ${MAKE_DCFG} ==="
           make O=out ARCH=arm64 "${MAKE_DCFG}" 2>&1 | tee -a build.log
 
