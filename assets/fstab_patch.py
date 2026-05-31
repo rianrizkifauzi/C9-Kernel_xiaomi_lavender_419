@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # Patch lavender-base.dtsi fstab to NON-DYNAMIC (legacy) layout.
 # Device lavender (crDroid 7.61) uses direct system/vendor partitions (no super/dynamic).
+# Uses brace-counting to robustly find the fstab { ... }; block (handles nested + metadata sibling).
 import sys, re
 
 path = sys.argv[1]
 with open(path) as f:
     content = f.read()
 
-# Non-dynamic fstab: system + vendor mounted directly by-name, NO 'logical' flag
 new_fstab = (
-    '\t\tfstab {\n'
+    'fstab {\n'
     '\t\t\tcompatible = "android,fstab";\n'
     '\t\t\tsystem {\n'
     '\t\t\t\tcompatible = "android,system";\n'
@@ -27,24 +27,46 @@ new_fstab = (
     '\t\t\t\tfsmgr_flags = "wait,avb";\n'
     '\t\t\t\tstatus = "ok";\n'
     '\t\t\t};\n'
-    '\t\t};'
+    '\t\t}'
 )
 
-# Replace existing fstab { ... }; block
-pattern = re.compile(r'\t*fstab\s*\{.*?\n\t*\};', re.DOTALL)
-if pattern.search(content):
-    content = pattern.sub(new_fstab, content, count=1)
-    print("Replaced existing fstab block with non-dynamic version")
-else:
-    # No fstab block -> inject after vbmeta { ... };
-    m = re.search(r'(vbmeta\s*\{.*?\};)', content, re.DOTALL)
-    if m:
-        idx = m.end()
-        content = content[:idx] + "\n\n" + new_fstab + content[idx:]
-        print("Injected non-dynamic fstab block after vbmeta")
-    else:
+# Find start of 'fstab {' (with any leading whitespace)
+m = re.search(r'fstab\s*\{', content)
+if not m:
+    # No fstab block -> inject after vbmeta { ... };  using brace counting
+    vm = re.search(r'vbmeta\s*\{', content)
+    if not vm:
         print("ERROR: no fstab or vbmeta node found")
         sys.exit(1)
+    # brace-count from vbmeta open to its close
+    i = vm.end()
+    depth = 1
+    while i < len(content) and depth > 0:
+        if content[i] == '{': depth += 1
+        elif content[i] == '}': depth -= 1
+        i += 1
+    # skip trailing ';'
+    while i < len(content) and content[i] in ' \t\n': i += 1
+    if i < len(content) and content[i] == ';': i += 1
+    inject = "\n\n\t\t" + new_fstab + ";"
+    content = content[:i] + inject + content[i:]
+    print("Injected non-dynamic fstab block after vbmeta")
+else:
+    start = m.start()
+    # brace-count to find matching close of fstab block
+    i = m.end()
+    depth = 1
+    while i < len(content) and depth > 0:
+        if content[i] == '{': depth += 1
+        elif content[i] == '}': depth -= 1
+        i += 1
+    # i now points just after the closing '}' of fstab; include trailing ';'
+    end = i
+    while end < len(content) and content[end] in ' \t': end += 1
+    if end < len(content) and content[end] == ';': end += 1
+    # Replace [start:end] with new_fstab + ';'
+    content = content[:start] + new_fstab + ";" + content[end:]
+    print("Replaced existing fstab block (brace-counted) with non-dynamic version")
 
 with open(path, 'w') as f:
     f.write(content)
