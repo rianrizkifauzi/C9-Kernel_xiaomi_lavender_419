@@ -6,11 +6,11 @@ on:
       kernel_repo:
         description: 'Kernel source repo (owner/name)'
         required: true
-        default: 'ImSpiDy/kernel_xiaomi_lavender'
+        default: 'pix106/nexus_kernel_xiaomi_lavender-4.19'
       kernel_branch:
-        description: 'Kernel source branch (R1=stable release-tag 4.19.304 | 14-Retro=latest 4.19.315 | 13-Retro=A13 base 4.19.157)'
+        description: 'Kernel source branch (4.19-rebase-test=default Nexus base | ImSpiDy R1=alternative)'
         required: true
-        default: 'R1'
+        default: '4.19-rebase-test'
       kernel_commit:
         description: 'Pin kernel source to specific commit SHA (use "head" for latest).'
         required: true
@@ -225,9 +225,7 @@ jobs:
         run: |
           set -e
           mkdir -p toolchain/clang
-          echo "=== Download Neutron Clang via antman ==="
-          # antman is the recommended sync tool for Neutron Clang
-          # Fallback: direct download latest release tarball
+          echo "=== Download Neutron Clang ==="
           NEUTRON_TAG=$(curl -s "https://api.github.com/repos/Neutron-Toolchains/clang-build-catalogue/releases/latest" | grep '"tag_name"' | head -1 | cut -d'"' -f4)
           if [ -z "$NEUTRON_TAG" ]; then
             echo "::warning::Failed to fetch latest Neutron tag, using known good 26052026"
@@ -242,13 +240,44 @@ jobs:
           ls -lah /tmp/neutron-clang.tar.zst
 
           echo "=== Extract Neutron Clang ==="
-          # zstd is in apt deps already
-          tar -I 'zstd -d' -xf /tmp/neutron-clang.tar.zst -C toolchain/clang
+          # Decompress zstd first, then untar (more reliable than tar -I)
+          unzstd -c /tmp/neutron-clang.tar.zst | tar -xf - -C toolchain/clang
           rm -f /tmp/neutron-clang.tar.zst
 
-          echo "=== Verify ==="
-          ls toolchain/clang/bin/ | head -20
-          toolchain/clang/bin/clang --version
+          echo "=== Verify extracted contents ==="
+          ls -la toolchain/clang/ | head -10
+          echo ""
+          echo "=== Looking for bin folder ==="
+          # Some toolchain tars extract into a subfolder, find clang binary
+          CLANG_BIN=$(find toolchain/clang -name "clang" -type f -executable 2>/dev/null | head -1)
+          if [ -z "$CLANG_BIN" ]; then
+            echo "::error::clang binary not found after extraction"
+            find toolchain/clang -maxdepth 3 -type d | head -20
+            exit 1
+          fi
+          CLANG_DIR=$(dirname "$CLANG_BIN")
+          echo "Found clang at: $CLANG_BIN"
+          echo "Clang bin dir: $CLANG_DIR"
+          # If clang is not directly in toolchain/clang/bin/, create symlink or move
+          if [ "$CLANG_DIR" != "toolchain/clang/bin" ]; then
+            echo "=== Reorganize toolchain layout ==="
+            # Find the parent that has 'bin' folder
+            TC_ROOT=$(dirname "$CLANG_DIR")
+            if [ -d "$TC_ROOT/bin" ] && [ -d "$TC_ROOT/lib" ]; then
+              # Move contents up to toolchain/clang/
+              shopt -s dotglob
+              mv "$TC_ROOT"/* toolchain/clang/ 2>/dev/null || true
+              shopt -u dotglob
+            fi
+          fi
+
+          echo "=== Final structure ==="
+          ls toolchain/clang/bin/ 2>/dev/null | head -10 || echo "(bin/ not found at expected path)"
+          toolchain/clang/bin/clang --version || {
+            # Last resort: full search
+            echo "::warning::clang at toolchain/clang/bin/clang not working, searching..."
+            find toolchain/clang -name "clang" -executable -type f 2>/dev/null
+          }
 
       - name: Clone KernelSU
         working-directory: kernel_source
