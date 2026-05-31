@@ -163,10 +163,11 @@ jobs:
           fi
 
           cd kernel_source
-          echo "KERNEL_VERSION=$(make kernelversion 2>/dev/null || echo unknown)" >> $GITHUB_ENV
+          KERNEL_VERSION=$(make kernelversion 2>/dev/null | tail -1 | tr -d '[:space:]' || echo unknown)
+          echo "KERNEL_VERSION=${KERNEL_VERSION}" >> $GITHUB_ENV
           echo "KERNEL_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           echo "KERNEL_FULL_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
-          echo "Final kernel HEAD: $(git rev-parse --short HEAD)"
+          echo "Final kernel HEAD: $(git rev-parse --short HEAD), version: ${KERNEL_VERSION}"
 
       - name: Resolve defconfig
         working-directory: kernel_source
