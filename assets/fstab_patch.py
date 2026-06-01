@@ -8,6 +8,21 @@ path = sys.argv[1]
 with open(path) as f:
     content = f.read()
 
+# Also fix vbmeta 'parts' to drop system_ext/product/odm (device only has system+vendor)
+# parts = "vbmeta,boot,system,system_ext,product,vendor,odm,dtbo,recovery";
+# -> parts = "vbmeta,boot,system,vendor,dtbo,recovery";
+def fix_vbmeta_parts(text):
+    m = re.search(r'parts\s*=\s*"([^"]*)"', text)
+    if m:
+        old = m.group(1)
+        keep = [p for p in old.split(',') if p.strip() not in ('system_ext', 'product', 'odm')]
+        newparts = ','.join(keep)
+        text = text[:m.start(1)] + newparts + text[m.end(1):]
+        print("Fixed vbmeta parts: " + old + " -> " + newparts)
+    return text
+
+content = fix_vbmeta_parts(content)
+
 new_fstab = (
     'fstab {\n'
     '\t\t\tcompatible = "android,fstab";\n'
