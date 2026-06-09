@@ -109,6 +109,10 @@ on:
         default: 'false'
         type: choice
         options: ['true', 'false']
+      force_ksu_version:
+        description: 'Force KSU_VERSION on pre-patched source to match manager (e.g. 33129). Empty = leave source default. Fixes "version too low for manager" warning.'
+        required: false
+        default: ''
 
 env:
   TZ: Asia/Jakarta
@@ -933,6 +937,48 @@ jobs:
             else
               echo "  ⚠️  supercall.c not found, skipping ksuver_override patch"
             fi
+          fi
+
+      - name: Force KSU_VERSION on pre-patched source (match manager 33129)
+        if: ${{ inputs.pre_patched_kernel == 'true' && inputs.force_ksu_version != '' }}
+        working-directory: kernel_source
+        run: |
+          set -e
+          FV="${{ inputs.force_ksu_version }}"
+          echo "=== Forcing KSU_VERSION=$FV on pre-integrated KSU source ==="
+          # Find the KSU kernel Makefile/Kbuild that defines KSU_VERSION via ccflags.
+          # In kucingoranye pre-integrated source, KSU lives under drivers/kernelsu or KernelSU*.
+          CAND=$(grep -rl -E "KSU_VERSION" --include=Makefile --include=Kbuild drivers KernelSU* 2>/dev/null | head -5 || true)
+          echo "Candidate makefiles:"; echo "$CAND"
+          PATCHED=0
+          for f in $CAND; do
+            # Append override at end of the makefile
+            {
+              echo ""
+              echo "# === Workflow forced KSU version override ==="
+              echo "ccflags-y += -UKSU_VERSION -DKSU_VERSION=$FV"
+            } >> "$f"
+            echo "  appended override to $f"
+            PATCHED=1
+          done
+          # Also patch any hardcoded version define in headers/c (e.g. #define KSU_VERSION 33091)
+          HC=$(grep -rl -E "define[[:space:]]+KSU_VERSION[[:space:]]+[0-9]+" drivers KernelSU* 2>/dev/null || true)
+          for f in $HC; do
+            sed -i -E "s/(define[[:space:]]+KSU_VERSION[[:space:]]+)[0-9]+/\1$FV/" "$f"
+            echo "  patched #define in $f"
+            PATCHED=1
+          done
+          # Patch ksuver_override default if present
+          SC=$(grep -rl "uint32_t ksuver_override = 0;" drivers KernelSU* 2>/dev/null || true)
+          for f in $SC; do
+            sed -i "s/uint32_t ksuver_override = 0;/uint32_t ksuver_override = $FV;/" "$f"
+            echo "  patched ksuver_override in $f"
+            PATCHED=1
+          done
+          if [ "$PATCHED" = "0" ]; then
+            echo "::warning::Could not locate KSU_VERSION definition; manager warning may persist"
+          else
+            echo "  ✅ KSU_VERSION override applied ($FV)"
           fi
 
       - name: Patch lavender DTS fstab (non-dynamic / legacy partition)
