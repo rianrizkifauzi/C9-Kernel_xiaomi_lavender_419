@@ -103,6 +103,12 @@ on:
         default: 'false'
         type: choice
         options: ['true', 'false']
+      patch_dtb_encrypt:
+        description: 'Patch stock DTB to disable forced encryption (forceencrypt->encryptable). Fixes init_user0_failed bootloop when kernel cannot derive FBE key. Requires use_stock_dtb=true.'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
 
 env:
   TZ: Asia/Jakarta
@@ -1064,6 +1070,36 @@ jobs:
           fi
           echo "KERNEL_IMAGE=$IMAGE" >> $GITHUB_ENV
           ls -lah out/arch/arm64/boot/
+
+      - name: Patch stock DTB (disable forced encryption)
+        if: ${{ inputs.use_stock_dtb == 'true' && inputs.patch_dtb_encrypt == 'true' }}
+        run: |
+          set -e
+          SRC="builder/assets/stock-dtb/kernel_dtb"
+          if [ ! -f "$SRC" ]; then
+            echo "::warning::stock dtb not found, skipping encrypt patch"; exit 0
+          fi
+          echo "=== Splitting stock DTB into individual FDT blobs ==="
+          python3 builder/assets/split_dtb.py "$SRC" > /tmp/dtb_parts.txt
+          echo "Blobs:"; cat /tmp/dtb_parts.txt
+          echo "=== Patching each blob: forceencrypt/fileencryption -> encryptable ==="
+          : > /tmp/kernel_dtb_patched
+          while read p; do
+            [ -z "$p" ] && continue
+            if dtc -I dtb -O dts "$p" -o "${p}.dts" 2>/dev/null; then
+              before=$(grep -c -E 'forceencrypt|fileencryption' "${p}.dts" || true)
+              sed -i -E 's/forceencrypt=footer/encryptable=footer/g; s/forceencrypt/encryptable/g; s/fileencryption=[^";]*/encryptable=footer/g' "${p}.dts"
+              after=$(grep -c -E 'forceencrypt|fileencryption' "${p}.dts" || true)
+              echo "  $(basename $p): enc-flags before=$before after=$after"
+              dtc -I dts -O dtb "${p}.dts" -o "${p}.patched" 2>/dev/null || cp "$p" "${p}.patched"
+              cat "${p}.patched" >> /tmp/kernel_dtb_patched
+            else
+              echo "  $(basename $p): dtc decompile failed, keeping original"
+              cat "$p" >> /tmp/kernel_dtb_patched
+            fi
+          done < /tmp/dtb_parts.txt
+          cp /tmp/kernel_dtb_patched builder/assets/stock-dtb/kernel_dtb
+          echo "=== Patched DTB size: $(ls -l builder/assets/stock-dtb/kernel_dtb | awk '{print $5}') ==="
 
       - name: Package with AnyKernel3
         run: |
