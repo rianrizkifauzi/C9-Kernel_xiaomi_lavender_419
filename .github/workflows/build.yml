@@ -1065,11 +1065,35 @@ jobs:
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           cp builder/assets/anykernel.sh AnyKernel3/anykernel.sh
 
-          cp "kernel_source/${KERNEL_IMAGE}" AnyKernel3/
+          # === Use STOCK S0NiX DTB (device boots with stock dtb; our source dtb
+          #     causes init "Could not read default fstab" -> bootloop).
+          #     Rebuild Image.gz-dtb = [our Image.gz] + [stock kernel_dtb]. ===
+          STOCK_DTB="builder/assets/stock-dtb/kernel_dtb"
+          BOOTDIR="kernel_source/out/arch/arm64/boot"
+          if [ -f "$STOCK_DTB" ]; then
+            echo "=== Stock DTB found, repacking Image.gz-dtb with stock dtb ==="
+            # Find the raw compressed kernel image (without dtb)
+            RAWIMG=""
+            for c in "$BOOTDIR/Image.gz" "$BOOTDIR/Image"; do
+              [ -f "$c" ] && RAWIMG="$c" && break
+            done
+            if [ -z "$RAWIMG" ]; then
+              echo "::warning::No raw Image.gz/Image found; will strip dtb from ${KERNEL_IMAGE}"
+              # Fallback: dtb magic is d00dfeed; we cannot easily split, so just use stock dtb appended to whatever Image.gz-dtb minus trailing dtb is risky.
+              # Safer: use the build Image.gz-dtb as-is only if no raw image. But we prefer raw.
+              RAWIMG="kernel_source/${KERNEL_IMAGE}"
+            fi
+            echo "  Raw kernel image: $RAWIMG"
+            cat "$RAWIMG" "$STOCK_DTB" > AnyKernel3/Image.gz-dtb
+            echo "  Built Image.gz-dtb (kernel + stock dtb): $(ls -lah AnyKernel3/Image.gz-dtb | awk '{print $5}')"
+            echo "STitched stock dtb into Image.gz-dtb"
+          else
+            echo "::warning::Stock DTB not found at $STOCK_DTB, using build output as-is"
+            cp "kernel_source/${KERNEL_IMAGE}" AnyKernel3/
+          fi
 
-          # Copy DTBs if present
-          for f in kernel_source/out/arch/arm64/boot/dtbo.img \
-                   kernel_source/out/arch/arm64/boot/dts/qcom/*.dtb; do
+          # Copy DTBs if present (dtbo only; main dtb handled above)
+          for f in kernel_source/out/arch/arm64/boot/dtbo.img; do
             [ -f "$f" ] && cp "$f" AnyKernel3/ || true
           done
 
