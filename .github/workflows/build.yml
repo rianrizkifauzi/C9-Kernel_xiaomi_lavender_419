@@ -1125,27 +1125,16 @@ jobs:
           if [ ! -f "$SRC" ]; then
             echo "::warning::stock dtb not found, skipping encrypt patch"; exit 0
           fi
-          echo "=== Splitting stock DTB into individual FDT blobs ==="
-          python3 builder/assets/split_dtb.py "$SRC" > /tmp/dtb_parts.txt
-          echo "Blobs:"; cat /tmp/dtb_parts.txt
-          echo "=== Patching each blob: forceencrypt/fileencryption -> encryptable ==="
-          : > /tmp/kernel_dtb_patched
-          while read p; do
-            [ -z "$p" ] && continue
-            if dtc -I dtb -O dts "$p" -o "${p}.dts" 2>/dev/null; then
-              before=$(grep -c -E 'forceencrypt|fileencryption' "${p}.dts" || true)
-              sed -i -E 's/forceencrypt=footer/encryptable=footer/g; s/forceencrypt/encryptable/g; s/fileencryption=[^";]*/encryptable=footer/g' "${p}.dts"
-              after=$(grep -c -E 'forceencrypt|fileencryption' "${p}.dts" || true)
-              echo "  $(basename $p): enc-flags before=$before after=$after"
-              dtc -I dts -O dtb "${p}.dts" -o "${p}.patched" 2>/dev/null || cp "$p" "${p}.patched"
-              cat "${p}.patched" >> /tmp/kernel_dtb_patched
-            else
-              echo "  $(basename $p): dtc decompile failed, keeping original"
-              cat "$p" >> /tmp/kernel_dtb_patched
-            fi
-          done < /tmp/dtb_parts.txt
-          cp /tmp/kernel_dtb_patched builder/assets/stock-dtb/kernel_dtb
-          echo "=== Patched DTB size: $(ls -l builder/assets/stock-dtb/kernel_dtb | awk '{print $5}') ==="
+          echo "=== Binary-safe DTB encryption patch (preserves backlight/panel props) ==="
+          echo "  md5 before: $(md5sum "$SRC" | awk '{print $1}')"
+          python3 builder/assets/patch_dtb_encrypt.py "$SRC"
+          echo "  md5 after:  $(md5sum "$SRC" | awk '{print $1}')"
+          echo "  verify no forceencrypt left:"
+          if grep -a -c "forceencrypt" "$SRC" >/dev/null 2>&1 && [ "$(grep -a -c forceencrypt "$SRC")" != "0" ]; then
+            echo "  ::warning:: forceencrypt still present"
+          else
+            echo "  ✅ forceencrypt removed"
+          fi
 
       - name: Package with AnyKernel3
         run: |
