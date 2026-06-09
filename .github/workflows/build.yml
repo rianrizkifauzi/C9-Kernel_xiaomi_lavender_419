@@ -109,6 +109,12 @@ on:
         default: 'false'
         type: choice
         options: ['true', 'false']
+      patch_dtb_wled:
+        description: 'Fix backlight: retarget WLED node compatible qcom,qpnp-wled -> qcom,pm660l-spmi-wled so the in-tree mainline WLED driver binds. Fixes stuck-bright/non-functional brightness slider. Requires use_stock_dtb=true.'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
       force_ksu_version:
         description: 'Force KSU_VERSION on pre-patched source to match manager (e.g. 33129). Empty = leave source default. Fixes "version too low for manager" warning.'
         required: false
@@ -1135,6 +1141,28 @@ jobs:
           else
             echo "  ✅ forceencrypt removed"
           fi
+
+      - name: Patch stock DTB (fix backlight WLED driver match)
+        if: ${{ inputs.use_stock_dtb == 'true' && inputs.patch_dtb_wled == 'true' }}
+        run: |
+          set -e
+          SRC="builder/assets/stock-dtb/kernel_dtb"
+          if [ ! -f "$SRC" ]; then
+            echo "::warning::stock dtb not found, skipping wled patch"; exit 0
+          fi
+          echo "=== Install python fdt (DTB parser) ==="
+          python3 -m pip install --quiet fdt || pip3 install --quiet fdt
+          echo "=== WLED node retarget: qcom,qpnp-wled -> qcom,pm660l-spmi-wled ==="
+          echo "  md5 before: $(md5sum "$SRC" | awk '{print $1}')"
+          python3 builder/assets/patch_dtb_wled.py "$SRC"
+          echo "  md5 after:  $(md5sum "$SRC" | awk '{print $1}')"
+          echo "  verify no qcom,qpnp-wled left:"
+          if grep -a -c "qcom,qpnp-wled" "$SRC" >/dev/null 2>&1 && [ "$(grep -a -c 'qcom,qpnp-wled' "$SRC")" != "0" ]; then
+            echo "  ::warning:: qcom,qpnp-wled still present"
+          else
+            echo "  ✅ qcom,qpnp-wled retargeted (backlight should bind to mainline WLED driver)"
+          fi
+          echo "  bl_ctrl_wled string count (should stay >0): $(grep -a -c 'bl_ctrl_wled' "$SRC" || echo 0)"
 
       - name: Package with AnyKernel3
         run: |
