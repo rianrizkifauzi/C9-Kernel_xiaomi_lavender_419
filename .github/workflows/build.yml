@@ -239,10 +239,25 @@ jobs:
           echo "Device codename: ${DEVICE_CODENAME}"
           echo "DEVICE_CODENAME=${DEVICE_CODENAME}" >> $GITHUB_ENV
 
-      - name: Clone toolchain (Proton Clang)
+      - name: Clone toolchain (Neutron Clang, fallback Proton)
         run: |
-          mkdir -p toolchain
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git toolchain/clang
+          set -e
+          mkdir -p toolchain/clang
+          echo "=== Try Neutron Clang (matches S0NiX stock build env) ==="
+          if cd toolchain/clang && \
+             curl -sSL "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" -o antman && \
+             chmod +x antman && \
+             ./antman -S 2>&1; then
+            ./antman --patch=glibc 2>&1 || true
+            echo "TOOLCHAIN=neutron" >> $GITHUB_ENV
+            cd "$GITHUB_WORKSPACE"
+          else
+            echo "::warning::Neutron install failed, falling back to Proton Clang"
+            cd "$GITHUB_WORKSPACE"
+            rm -rf toolchain/clang
+            git clone --depth=1 https://github.com/kdrag0n/proton-clang.git toolchain/clang
+            echo "TOOLCHAIN=proton" >> $GITHUB_ENV
+          fi
           echo "=== Verify ==="
           ls toolchain/clang/bin/ | head -10
           toolchain/clang/bin/clang --version
@@ -1124,7 +1139,7 @@ jobs:
 
             Changelog ${{ env.KERNEL_RELVER }} :
 
-            _• Compiled using Proton Clang (kdrag0n) latest._
+            _• Compiled using Neutron Clang (LLD) matching S0NiX stock build env._
             _• Bump to Linux ${{ env.KERNEL_VERSION }} (CIP-LTS)._
             _• Base on `${{ inputs.kernel_repo }}@${{ inputs.kernel_branch }}` (`${{ env.KERNEL_SHA }}`)._
             _• Integrate KernelSU-Next (`${{ inputs.ksun_branch }}` @ `${{ env.KSUN_VERSION }}`, forced KSU_VERSION 33129)._
