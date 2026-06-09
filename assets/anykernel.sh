@@ -27,9 +27,9 @@ ui_print "**************************************";
 ui_print "*  C9 Custom Kernel for Lavender     *";
 ui_print "*  Codename: Phoenix                 *";
 ui_print "*  Built by JorianPonomaref          *";
-ui_print "*  Base: Linux 4.19.325 + KSUN+SUSFS *";
-ui_print "*  Source: kucingoranye SDM660       *";
-ui_print "*  Mode: SELinux permissive (test)   *";
+ui_print "*  Base: Linux 4.19 (S0NiX) + KSUN   *";
+ui_print "*  DTB: stock S0NiX (boot-safe)      *";
+ui_print "*  Mode: SELinux enforcing           *";
 ui_print "**************************************";
 ui_print " ";
 
@@ -38,10 +38,9 @@ ui_print " ";
 
 split_boot;
 
-# Patch kernel cmdline to force SELinux permissive
-# This bypasses fstab/sepolicy_vers.txt load issue on incompatible vendor partition
-ui_print "Patching cmdline: androidboot.selinux=permissive";
-patch_cmdline "androidboot.selinux" "androidboot.selinux=permissive";
+# NOTE: SELinux kept ENFORCING (stock behaviour).
+# Forcing permissive breaks keymaster/QSEE FBE key derivation -> /data won't
+# decrypt -> spurious "enter password" prompt on devices with no lockscreen.
 
 flash_boot;
 ## end install
