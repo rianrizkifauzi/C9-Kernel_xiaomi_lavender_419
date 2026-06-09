@@ -97,6 +97,12 @@ on:
         default: 'false'
         type: choice
         options: ['true', 'false']
+      use_stock_dtb:
+        description: 'Stitch STOCK S0NiX dtb into Image.gz-dtb. true = foreign-lineage source (kucingoranye, dtb mismatch). false = ImSpiDy/S0NiX source (native dtb matches ROM).'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
 
 env:
   TZ: Asia/Jakarta
@@ -1065,12 +1071,11 @@ jobs:
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           cp builder/assets/anykernel.sh AnyKernel3/anykernel.sh
 
-          # === Use STOCK S0NiX DTB (device boots with stock dtb; our source dtb
-          #     causes init "Could not read default fstab" -> bootloop).
-          #     Rebuild Image.gz-dtb = [our Image.gz] + [stock kernel_dtb]. ===
+          # === Optionally stitch STOCK S0NiX DTB (only for foreign-lineage source).
+          #     For ImSpiDy/S0NiX source the native dtb already matches ROM. ===
           STOCK_DTB="builder/assets/stock-dtb/kernel_dtb"
           BOOTDIR="kernel_source/out/arch/arm64/boot"
-          if [ -f "$STOCK_DTB" ]; then
+          if [ "${{ inputs.use_stock_dtb }}" = "true" ] && [ -f "$STOCK_DTB" ]; then
             echo "=== Stock DTB found, repacking Image.gz-dtb with stock dtb ==="
             # Find the raw compressed kernel image (without dtb)
             RAWIMG=""
