@@ -1078,6 +1078,25 @@ jobs:
             sed -i 's/CONFIG_CC_WERROR=y/# CONFIG_CC_WERROR is not set/' out/.config
           echo "  CC_WERROR disabled (warnings visible but non-fatal)"
 
+          # === DISPLAY FIX: Append missing display configs from stock S0NiX ===
+          echo "=== Appending stock display configs missing from custom defconfig ==="
+          cat >> out/.config << 'DISPLAY_FIX'
+          # Backlight subsystem (required for physical screen power)
+          CONFIG_BACKLIGHT_CLASS_DEVICE=y
+          CONFIG_BACKLIGHT_GENERIC=y
+          CONFIG_BACKLIGHT_LCD_SUPPORT=y
+          # OLEDB regulator (panel bias voltage)
+          CONFIG_REGULATOR_QPNP_OLEDB=y
+          # External display subsystem (display state management)
+          CONFIG_MSM_EXT_DISPLAY=y
+          # MDSS common framework
+          CONFIG_FB_MSM_MDSS_COMMON=y
+          CONFIG_FB_MSM_MDSS_XLOG_DEBUG=y
+          DISPLAY_FIX
+          # Regenerate .config with new options
+          make O=out ARCH=arm64 olddefconfig 2>&1 | tail -5
+          echo "  Display config fix applied"
+
           echo ""
           echo "=== Building kernel (Clang+GNU-LD hybrid for 4.4 compat) ==="
           echo "KernelSU repo: ${{ inputs.ksun_repo }}"
