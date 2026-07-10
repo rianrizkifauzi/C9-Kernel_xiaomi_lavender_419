@@ -1023,13 +1023,8 @@ jobs:
             echo "  [FIXED] fs/sdcardfs/inode.c: zero-init inode/dentry structs"
           fi
           
-          # Fix 3: kernel/bpf/syscall.c - CHECK_ATTR macro generates const temporaries
-          # The u64_to_user_ptr macro creates const unsigned long long without init.
-          # Upstream fix: This is a compiler false positive. Safe to suppress per-file.
-          if [ -f kernel/bpf/syscall.c ]; then
-            sed -i '1i\/* Clang 23+ false positive: CHECK_ATTR macro const temps are set by copy_from_user */\n#pragma clang diagnostic ignored "-Wdefault-const-init-var-unsafe"' kernel/bpf/syscall.c
-            echo "  [FIXED] kernel/bpf/syscall.c: pragma suppress for CHECK_ATTR macro false positive"
-          fi
+          # Fix 3: kernel/bpf/syscall.c - skipped (only needed for Clang 23+, not Clang 14)
+          echo "  [SKIP] kernel/bpf/syscall.c: not needed with Clang 14"
           
           echo ""
           echo "All const-init fixes applied."
