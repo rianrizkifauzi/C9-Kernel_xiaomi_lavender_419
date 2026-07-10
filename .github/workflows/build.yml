@@ -261,27 +261,18 @@ jobs:
           echo "Device codename: ${DEVICE_CODENAME}"
           echo "DEVICE_CODENAME=${DEVICE_CODENAME}" >> $GITHUB_ENV
 
-      - name: Clone toolchain (Neutron Clang, fallback Proton)
+            - name: Clone toolchain (AOSP Clang 14.0.6 - matches stock S0NiX exactly)
         run: |
           set -e
           mkdir -p toolchain/clang
-          echo "=== Try Neutron Clang (matches S0NiX stock build env) ==="
-          if cd toolchain/clang && \
-             curl -sSL "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" -o antman && \
-             chmod +x antman && \
-             ./antman -S 2>&1; then
-            ./antman --patch=glibc 2>&1 || true
-            echo "TOOLCHAIN=neutron" >> $GITHUB_ENV
-            cd "$GITHUB_WORKSPACE"
-          else
-            echo "::warning::Neutron install failed, falling back to Proton Clang"
-            cd "$GITHUB_WORKSPACE"
-            rm -rf toolchain/clang
-            git clone --depth=1 https://github.com/kdrag0n/proton-clang.git toolchain/clang
-            echo "TOOLCHAIN=proton" >> $GITHUB_ENV
-          fi
+          echo "=== AOSP Clang 14.0.6 (clang-r450784e) ==="
+          echo "Stock S0NiX uses: Nexus clang 14.0.6, LLD 14.0.6"
+          echo "Using EXACT same compiler version for binary compatibility"
+          
+          git clone --depth=1 https://github.com/afaneh-toolchain/prebuilts_clang_host_linux-x86_clang-r450784e.git toolchain/clang
+          
+          echo "TOOLCHAIN=nexus-clang14" >> $GITHUB_ENV
           echo "=== Verify ==="
-          ls toolchain/clang/bin/ | head -10
           toolchain/clang/bin/clang --version
 
       - name: Clone KernelSU
