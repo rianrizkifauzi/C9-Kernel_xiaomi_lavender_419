@@ -1046,7 +1046,7 @@ jobs:
           # Exception: Full LTO requires ld.lld (GNU ld can't handle LTO bitcode).
 
           # === LTO + Polly flags ===
-          EXTRA_KCFLAGS="-Wno-default-const-init-var-unsafe"
+          EXTRA_KCFLAGS="-Wno-default-const-init-var-unsafe -Wno-default-const-init-field-unsafe -Wno-default-const-init"
           LINKER_OVERRIDE=""
           LTO_MODE="${{ inputs.enable_lto }}"
           POLLY_ENABLED="${{ inputs.enable_polly }}"
