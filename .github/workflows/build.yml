@@ -269,7 +269,10 @@ jobs:
           echo "Stock S0NiX uses: Nexus clang 14.0.6, LLD 14.0.6"
           echo "Using EXACT same compiler version for binary compatibility"
           
-          git clone --depth=1 https://github.com/afaneh-toolchain/prebuilts_clang_host_linux-x86_clang-r450784e.git toolchain/clang
+          # Download ZyCromerZ Clang 14.0.6 (binary-compatible with AOSP clang-r450784e)
+          curl -sSL "https://github.com/ZyCromerZ/Clang/releases/download/14.0.6-20260619-release/Clang-14.0.6-20260619.tar.gz" -o /tmp/clang14.tar.gz
+          tar -xzf /tmp/clang14.tar.gz -C toolchain/clang/
+          rm /tmp/clang14.tar.gz
           
           echo "TOOLCHAIN=nexus-clang14" >> $GITHUB_ENV
           echo "=== Verify ==="
