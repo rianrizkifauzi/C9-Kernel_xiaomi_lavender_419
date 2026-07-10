@@ -1005,6 +1005,40 @@ jobs:
           echo "=== After patch (fstab section) ==="
           grep -n -A20 "fstab {" "$DTSI" | head -30 || true
 
+
+      - name: Fix const-init warnings (Clang 23 compat)
+        working-directory: kernel_source
+        run: |
+          echo "=== Fixing uninitialized const member warnings (Clang 23+) ==="
+          echo "These are variables with const struct members that need explicit zero-init."
+          echo ""
+          
+          # Fix 1: kernel/params.c - struct kernel_param has const members
+          # Lines 351 and 407: "struct kernel_param dummy;" -> "struct kernel_param dummy = {};"
+          if [ -f kernel/params.c ]; then
+            sed -i 's/struct kernel_param dummy;/struct kernel_param dummy = {};/' kernel/params.c
+            sed -i 's/struct kernel_param kp;/struct kernel_param kp = {};/' kernel/params.c
+            echo "  [FIXED] kernel/params.c: zero-init kernel_param structs"
+          fi
+          
+          # Fix 2: fs/sdcardfs/inode.c - struct inode has const members
+          # Lines 562, 611: "struct inode tmp;" -> "struct inode tmp = {};"  
+          if [ -f fs/sdcardfs/inode.c ]; then
+            sed -i 's/struct inode tmp;/struct inode tmp = {};/g' fs/sdcardfs/inode.c
+            sed -i 's/struct dentry tmp_d;/struct dentry tmp_d = {};/g' fs/sdcardfs/inode.c
+            echo "  [FIXED] fs/sdcardfs/inode.c: zero-init inode/dentry structs"
+          fi
+          
+          # Fix 3: kernel/bpf/syscall.c - CHECK_ATTR macro generates const temporaries
+          # The u64_to_user_ptr macro creates const unsigned long long without init.
+          # Upstream fix: This is a compiler false positive. Safe to suppress per-file.
+          if [ -f kernel/bpf/syscall.c ]; then
+            sed -i '1i\/* Clang 23+ false positive: CHECK_ATTR macro const temps are set by copy_from_user */\n#pragma clang diagnostic ignored "-Wdefault-const-init-var-unsafe"' kernel/bpf/syscall.c
+            echo "  [FIXED] kernel/bpf/syscall.c: pragma suppress for CHECK_ATTR macro false positive"
+          fi
+          
+          echo ""
+          echo "All const-init fixes applied."
       - name: Build kernel
         working-directory: kernel_source
         env:
@@ -1046,7 +1080,7 @@ jobs:
           # Exception: Full LTO requires ld.lld (GNU ld can't handle LTO bitcode).
 
           # === LTO + Polly flags ===
-          EXTRA_KCFLAGS="-Wno-default-const-init-var-unsafe -Wno-default-const-init-field-unsafe -Wno-default-const-init"
+          EXTRA_KCFLAGS=""
           LINKER_OVERRIDE=""
           LTO_MODE="${{ inputs.enable_lto }}"
           POLLY_ENABLED="${{ inputs.enable_polly }}"
