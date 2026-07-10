@@ -1069,6 +1069,14 @@ jobs:
           fi
           echo "=== Generating .config from ${MAKE_DCFG} ==="
           make O=out ARCH=arm64 "${MAKE_DCFG}" 2>&1 | tee -a build.log
+          
+          # Clang 23+ generates new warnings that old kernel code (4.19.x) doesn't handle.
+          # Instead of patching every file, disable -Werror like upstream does for
+          # cross-compiler-version builds. Warnings still appear in log for review.
+          echo "=== Disabling CC_WERROR for Clang 23 compat with older kernel ==="
+          scripts/config --file out/.config -d CC_WERROR 2>/dev/null || \
+            sed -i 's/CONFIG_CC_WERROR=y/# CONFIG_CC_WERROR is not set/' out/.config
+          echo "  CC_WERROR disabled (warnings visible but non-fatal)"
 
           echo ""
           echo "=== Building kernel (Clang+GNU-LD hybrid for 4.4 compat) ==="
