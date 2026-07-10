@@ -261,7 +261,7 @@ jobs:
           echo "Device codename: ${DEVICE_CODENAME}"
           echo "DEVICE_CODENAME=${DEVICE_CODENAME}" >> $GITHUB_ENV
 
-            - name: Clone toolchain (AOSP Clang 14.0.6 - matches stock S0NiX exactly)
+      - name: Clone toolchain (AOSP Clang 14.0.6 - matches stock S0NiX exactly)
         run: |
           set -e
           mkdir -p toolchain/clang
