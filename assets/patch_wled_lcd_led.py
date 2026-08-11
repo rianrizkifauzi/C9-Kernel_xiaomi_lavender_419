@@ -28,15 +28,15 @@ STRUCT_ADD = """struct led_classdev switch_cdev;
 	struct backlight_device *bl;"""
 
 FUNC_ANCHOR = "static int wled_update_status(struct backlight_device *bl)"
-FUNC_ADD = """static void wled_lcd_brightness_set(struct led_classdev *cdev,
-				    enum led_brightness brightness)
+FUNC_ADD = """static int wled_lcd_brightness_set(struct led_classdev *cdev,
+				   enum led_brightness brightness)
 {
 	struct wled *wled = container_of(cdev, struct wled, lcd_cdev);
 
 	if (!wled->bl)
-		return;
+		return 0;
 	wled->bl->props.brightness = brightness;
-	backlight_update_status(wled->bl);
+	return backlight_update_status(wled->bl);
 }
 
 static int wled_update_status(struct backlight_device *bl)"""
