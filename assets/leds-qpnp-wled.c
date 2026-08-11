@@ -27,6 +27,22 @@
 #include <linux/leds-qpnp-wled.h>
 #include <linux/qpnp/qpnp-revid.h>
 
+/* C9 compat: of_get_address_by_name() is a Xiaomi 4.4 helper absent in this
+ * tree. Emulate it with of_property_match_string() + of_get_address().
+ */
+static inline const __be32 *c9_of_get_address_by_name(struct device_node *np,
+						      const char *name,
+						      u64 *size,
+						      unsigned int *flags)
+{
+	int idx = of_property_match_string(np, "reg-names", name);
+
+	if (idx < 0)
+		return NULL;
+	return of_get_address(np, idx, size, flags);
+}
+#define of_get_address_by_name c9_of_get_address_by_name
+
 /* base addresses */
 #define QPNP_WLED_CTRL_BASE		"qpnp-wled-ctrl-base"
 #define QPNP_WLED_SINK_BASE		"qpnp-wled-sink-base"
