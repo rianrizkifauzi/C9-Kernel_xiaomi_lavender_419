@@ -44,8 +44,8 @@ static inline const __be32 *c9_of_get_address_by_name(struct device_node *np,
 #define of_get_address_by_name c9_of_get_address_by_name
 
 /* base addresses */
-#define QPNP_WLED_CTRL_BASE		"qpnp-wled-ctrl-base"
-#define QPNP_WLED_SINK_BASE		"qpnp-wled-sink-base"
+#define QPNP_WLED_CTRL_BASE		"wled-ctrl-base" /* C9: CAF DTB naming */
+#define QPNP_WLED_SINK_BASE		"wled-sink-base" /* C9: CAF DTB naming */
 
 /* ctrl registers */
 #define QPNP_WLED_FAULT_STATUS(b)	(b + 0x08)
@@ -2300,7 +2300,7 @@ static int qpnp_wled_parse_dt(struct qpnp_wled *wled)
 		return rc;
 	}
 
-	wled->cdev.default_trigger = QPNP_WLED_TRIGGER_NONE;
+	wled->cdev.default_trigger = "bkl-trigger"; /* C9: CAF DTB has no linux,default-trigger */
 	rc = of_property_read_string(pdev->dev.of_node, "linux,default-trigger",
 					&wled->cdev.default_trigger);
 	if (rc && (rc != -EINVAL)) {
@@ -2631,10 +2631,10 @@ static int qpnp_wled_parse_dt(struct qpnp_wled *wled)
 	prop = of_find_property(pdev->dev.of_node,
 			"qcom,led-strings-list", &temp_val);
 	if (!prop || !temp_val || temp_val > QPNP_WLED_MAX_STRINGS) {
-		dev_err(&pdev->dev, "Invalid strings info, use default");
-		wled->num_strings = wled->max_strings;
-		for (i = 0; i < wled->num_strings; i++)
-			wled->strings[i] = i;
+		dev_info(&pdev->dev, "C9DWN: no led-strings-list, defaulting to strings {0,1}");
+		wled->num_strings = 2;
+		wled->strings[0] = 0;
+		wled->strings[1] = 1;
 	} else {
 		wled->num_strings = temp_val;
 		strings = prop->value;
