@@ -15,11 +15,11 @@ supported.versions=
 supported.patchlevels=
 '; } # end properties
 
-# shell variables
-block=/dev/block/bootdevice/by-name/boot;
-is_slot_device=0;
-ramdisk_compression=auto;
-patch_vbmeta_flag=auto;
+# boot shell variables (modern AK3 requires UPPERCASE)
+BLOCK=/dev/block/bootdevice/by-name/boot;
+IS_SLOT_DEVICE=0;
+RAMDISK_COMPRESSION=auto;
+PATCH_VBMETA_FLAG=auto;
 
 # Banner
 ui_print " ";
