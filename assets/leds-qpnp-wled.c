@@ -44,8 +44,8 @@ static inline const __be32 *c9_of_get_address_by_name(struct device_node *np,
 #define of_get_address_by_name c9_of_get_address_by_name
 
 /* base addresses */
-#define QPNP_WLED_CTRL_BASE		"wled-ctrl-base" /* C9: CAF DTB naming */
-#define QPNP_WLED_SINK_BASE		"wled-sink-base" /* C9: CAF DTB naming */
+#define QPNP_WLED_CTRL_BASE		"qpnp-wled-ctrl-base"
+#define QPNP_WLED_SINK_BASE		"qpnp-wled-sink-base"
 
 /* ctrl registers */
 #define QPNP_WLED_FAULT_STATUS(b)	(b + 0x08)
@@ -2300,7 +2300,7 @@ static int qpnp_wled_parse_dt(struct qpnp_wled *wled)
 		return rc;
 	}
 
-	wled->cdev.default_trigger = "bkl-trigger"; /* C9: CAF DTB has no linux,default-trigger */
+	wled->cdev.default_trigger = QPNP_WLED_TRIGGER_NONE;
 	rc = of_property_read_string(pdev->dev.of_node, "linux,default-trigger",
 					&wled->cdev.default_trigger);
 	if (rc && (rc != -EINVAL)) {
