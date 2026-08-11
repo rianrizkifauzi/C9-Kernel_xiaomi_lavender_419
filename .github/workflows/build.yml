@@ -121,6 +121,12 @@ on:
         default: 'true'
         type: choice
         options: ['true', 'false']
+      inject_qpnp_wled:
+        description: 'Fix black-screen backlight (DOWNSTREAM path): inject Xiaomi downstream leds-qpnp-wled.c driver + disable CONFIG_BACKLIGHT_QCOM_SPMI_WLED so mdss_dsi_panel uses the bkl-trigger LED chain like MIUI stock. REQUIRES patch_dtb_wled=false AND patch_wled_led=false (keep original qcom,qpnp-wled compatible).'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
       force_ksu_version:
         description: 'Force KSU_VERSION on pre-patched source to match manager (e.g. 33223 for v3.3.0, 33129 for v3.2.0). Empty = leave source default. Fixes "version too low for manager" warning.'
         required: false
@@ -1057,6 +1063,26 @@ jobs:
           echo "  verify (lcd_cdev refs):"
           grep -n "lcd_cdev" "$WLED" | head -5
 
+      - name: Inject downstream qpnp-wled driver (MIUI-style bkl-trigger chain)
+        if: ${{ inputs.inject_qpnp_wled == 'true' }}
+        working-directory: kernel_source
+        run: |
+          set -e
+          echo "=== Injecting Xiaomi downstream leds-qpnp-wled.c ==="
+          echo "Why: DT node qcom,leds@d800 carries qpnp-wled properties (qcom,vref-uv,"
+          echo "     qcom,switch-freq-khz, linux,default-trigger=bkl-trigger, ...). The CAF"
+          echo "     qcom-spmi-wled driver parses NONE of them -> boost misconfigured -> dark panel."
+          echo "     Downstream driver + bkl-trigger LED chain = how MIUI stock drives this panel."
+          cp "$GITHUB_WORKSPACE/builder/assets/leds-qpnp-wled.c" drivers/leds/leds-qpnp-wled.c
+          cp "$GITHUB_WORKSPACE/builder/assets/leds-qpnp-wled.h" include/linux/leds-qpnp-wled.h
+          grep -q 'leds-qpnp-wled.o' drivers/leds/Makefile || \
+            echo 'obj-y += leds-qpnp-wled.o' >> drivers/leds/Makefile
+          # Switch mdss_dsi_panel from backlight-class path (dsi_panel_wled_register)
+          # to the "bkl-trigger" LED trigger path that qpnp-wled binds to.
+          sed -i 's/^CONFIG_BACKLIGHT_QCOM_SPMI_WLED=y/# CONFIG_BACKLIGHT_QCOM_SPMI_WLED is not set/' "${DCFG_PATH}"
+          echo "  defconfig now: $(grep 'BACKLIGHT_QCOM_SPMI_WLED' "${DCFG_PATH}" || echo '(symbol removed)')"
+          echo "  Makefile: $(grep 'qpnp-wled' drivers/leds/Makefile)"
+
       - name: Build kernel
         working-directory: kernel_source
         env:
@@ -1114,6 +1140,13 @@ jobs:
           # Regenerate .config with new options
           make O=out ARCH=arm64 olddefconfig 2>&1 | tail -5
           echo "  Display config fix applied"
+
+          if [ "${{ inputs.inject_qpnp_wled }}" = "true" ]; then
+            echo "=== Downstream qpnp-wled: force BACKLIGHT_QCOM_SPMI_WLED off ==="
+            scripts/config --file out/.config -d BACKLIGHT_QCOM_SPMI_WLED
+            make O=out ARCH=arm64 olddefconfig 2>&1 | tail -3
+            grep "BACKLIGHT_QCOM_SPMI_WLED" out/.config || echo "  (symbol off, OK)"
+          fi
 
           echo ""
           echo "=== Building kernel (Clang+GNU-LD hybrid for 4.4 compat) ==="
