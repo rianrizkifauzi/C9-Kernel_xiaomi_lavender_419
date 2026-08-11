@@ -33,6 +33,7 @@ FUNC_ADD = """static int wled_lcd_brightness_set(struct led_classdev *cdev,
 {
 	struct wled *wled = container_of(cdev, struct wled, lcd_cdev);
 
+	pr_info("C9WLED: lcd-backlight LED set brightness=%d\\n", brightness);
 	if (!wled->bl)
 		return 0;
 	wled->bl->props.brightness = brightness;
@@ -40,6 +41,14 @@ FUNC_ADD = """static int wled_lcd_brightness_set(struct led_classdev *cdev,
 }
 
 static int wled_update_status(struct backlight_device *bl)"""
+
+UPD_ANCHOR = "\tu16 brightness = bl->props.brightness;\n\tint rc;"
+UPD_ADD = """\tu16 brightness = bl->props.brightness;
+	int rc;
+
+	pr_info("C9WLED: update_status br=%d power=%d fb_blank=%d state=0x%x\\n",
+		brightness, bl->props.power, bl->props.fb_blank,
+		bl->props.state);"""
 
 PROBE_ANCHOR = "\trc = wled_flash_device_register(wled);"
 PROBE_ADD = """\twled->bl = bl;
@@ -50,6 +59,15 @@ PROBE_ADD = """\twled->bl = bl;
 	if (rc < 0)
 		dev_err(&pdev->dev, "failed to register lcd-backlight led rc:%d\\n",
 			rc);
+
+	/* C9 DEBUG: force backlight on at probe to validate WLED HW path */
+	bl->props.brightness = wled->max_brightness / 2;
+	bl->props.power = FB_BLANK_UNBLANK;
+	bl->props.fb_blank = FB_BLANK_UNBLANK;
+	bl->props.state &= ~BL_CORE_FBBLANK;
+	rc = backlight_update_status(bl);
+	dev_info(&pdev->dev, "C9WLED: probe force-on br=%d max=%d rc=%d\\n",
+		 bl->props.brightness, wled->max_brightness, rc);
 
 	rc = wled_flash_device_register(wled);"""
 
@@ -64,6 +82,7 @@ def main():
 
     for anchor, repl in ((STRUCT_ANCHOR, STRUCT_ADD),
                          (FUNC_ANCHOR, FUNC_ADD),
+                         (UPD_ANCHOR, UPD_ADD),
                          (PROBE_ANCHOR, PROBE_ADD)):
         if src.count(anchor) != 1:
             sys.stderr.write("ERROR: anchor not unique (%d): %r\n"
