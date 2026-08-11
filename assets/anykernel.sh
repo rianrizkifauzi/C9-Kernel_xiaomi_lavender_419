@@ -43,4 +43,27 @@ split_boot;
 # decrypt -> spurious "enter password" prompt on devices with no lockscreen.
 
 flash_boot;
+
+## --- Vendor fstab patch (FDE forceencrypt -> encryptable) ---
+## Root cause (verified on crDroid 11 lavender): ROM ships
+## /vendor/etc/fstab.qcom with forceencrypt=footer on /data. This kernel's
+## keymaster/FDE path cannot auto-decrypt it -> spurious CryptKeeper
+## "enter your password" screen on fresh flash, and bootloop after
+## Format Data (in-place encryption fails). Relaxing to encryptable makes
+## /data mount unencrypted, which is what the ROM expects for this device.
+ui_print "- Relaxing vendor fstab encryption flags...";
+FSTAB=/vendor/etc/fstab.qcom;
+mount /vendor 2>/dev/null;
+mount -o rw,remount /vendor 2>/dev/null || mount -o rw /vendor 2>/dev/null;
+if [ -f $FSTAB ]; then
+  sed -i 's/forceencrypt=footer/encryptable=footer/g' $FSTAB;
+  if grep -q forceencrypt $FSTAB; then
+    ui_print "  ! forceencrypt still present in fstab (manual check needed)";
+  else
+    ui_print "  + fstab patched OK (encryptable)";
+  fi;
+else
+  ui_print "  ! $FSTAB not found, skipping";
+fi;
+
 ## end install

@@ -8,9 +8,9 @@ on:
         required: true
         default: 'kucingoranye/android_kernel_xiaomi_sdm660_419'
       kernel_branch:
-        description: 'Kernel source branch (kernelsu-next-3.1.0-susfs-2.1.0=pre-patched KSU+SUSFS RECOMMENDED | android-4.19-stable=clean)'
+        description: 'Kernel source branch (ksun-3.3.0 = pre-patched KSU-Next v3.3.0 RECOMMENDED | kernelsu-next-3.1.0-susfs-2.1.0 = old KSU 3.1 | android-4.19-stable = clean)'
         required: true
-        default: 'kernelsu-next-3.1.0-susfs-2.1.0'
+        default: 'ksun-3.3.0'
       kernel_commit:
         description: 'Pin kernel source to specific commit SHA (use "head" for latest).'
         required: true
@@ -24,9 +24,9 @@ on:
         required: true
         default: 'KernelSU-Next/KernelSU-Next'
       ksun_branch:
-        description: 'KernelSU tag/branch. legacy = stable 3.x for non-GKI 4.x kernel.'
+        description: 'KernelSU tag/branch. v3.3.0 = latest stable. legacy = old stable 3.x branch for non-GKI 4.x kernel.'
         required: true
-        default: 'legacy'
+        default: 'v3.3.0'
       ksun_commit:
         description: 'Pin KSU to specific commit SHA (use "head" for branch head).'
         required: true
@@ -100,7 +100,7 @@ on:
       use_stock_dtb:
         description: 'Stitch STOCK S0NiX dtb into Image.gz-dtb. true = foreign-lineage source (kucingoranye, dtb mismatch). false = ImSpiDy/S0NiX source (native dtb matches ROM).'
         required: false
-        default: 'false'
+        default: 'true'
         type: choice
         options: ['true', 'false']
       patch_dtb_encrypt:
@@ -110,13 +110,19 @@ on:
         type: choice
         options: ['true', 'false']
       patch_dtb_wled:
-        description: 'Fix backlight: retarget WLED node compatible qcom,qpnp-wled -> qcom,pm660l-spmi-wled so the in-tree mainline WLED driver binds. Fixes stuck-bright/non-functional brightness slider. Requires use_stock_dtb=true.'
+        description: 'Fix backlight: retarget WLED node compatible qcom,qpnp-wled -> qcom,pm660l-spmi-wled so the in-tree mainline WLED driver binds. Fixes stuck-bright/non-functional brightness slider. Requires use_stock_dtb=true. Pair with patch_wled_led=true.'
         required: false
-        default: 'false'
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      patch_wled_led:
+        description: 'Fix black-screen backlight: patch qcom-spmi-wled driver to also register LED-class lcd-backlight node (A11 lavender framework drives brightness via /sys/class/leds/lcd-backlight). Pair with patch_dtb_wled=true.'
+        required: false
+        default: 'true'
         type: choice
         options: ['true', 'false']
       force_ksu_version:
-        description: 'Force KSU_VERSION on pre-patched source to match manager (e.g. 33129). Empty = leave source default. Fixes "version too low for manager" warning.'
+        description: 'Force KSU_VERSION on pre-patched source to match manager (e.g. 33223 for v3.3.0, 33129 for v3.2.0). Empty = leave source default. Fixes "version too low for manager" warning.'
         required: false
         default: ''
 
@@ -894,15 +900,21 @@ jobs:
           if [ -f "$KBUILD_FILE" ]; then
             # Read the actual git tag/commit count from KSU repo
             cd "${KSU_DIR}"
-            KSU_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v3.2.0-legacy")
-            KSU_COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "1000")
+            KSU_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v3.3.0")
+            KSU_COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
             cd ..
 
-            # NOTE: Manager v3.2.0-spoofed bundles ksud version 33129.
-            # We MUST match this to make Shamiko (and other strict modules) accept.
+            # KernelSU-Next version formula: 30000 + commit-count (see their Kbuild).
+            # Compute it here because the driver loses .git context under O=out build.
+            # Manager MUST match this code (v3.3.0 = 33223, v3.2.0 = 33129).
             # If kernel KSU_VERSION != ksud version, Shamiko aborts with
             # "KernelSU version abnormal".
-            FORCED_VERSION=33129
+            if [ "$KSU_COMMIT_COUNT" -gt 100 ] 2>/dev/null; then
+              FORCED_VERSION=$((30000 + KSU_COMMIT_COUNT))
+            else
+              echo "::warning::git commit count unavailable ($KSU_COMMIT_COUNT), falling back to v3.3.0 code"
+              FORCED_VERSION=33223
+            fi
 
             echo "  Forcing KSU_VERSION=$FORCED_VERSION (tag=$KSU_TAG)"
             echo "  Appending overrides to $KBUILD_FILE"
@@ -1028,6 +1040,23 @@ jobs:
           
           echo ""
           echo "All const-init fixes applied."
+      - name: Patch WLED driver (register LED-class lcd-backlight)
+        if: ${{ inputs.patch_wled_led == 'true' }}
+        working-directory: kernel_source
+        run: |
+          set -e
+          WLED="drivers/video/backlight/qcom-spmi-wled.c"
+          if [ ! -f "$WLED" ]; then
+            echo "::warning::$WLED not found, skipping lcd-backlight LED patch"
+            exit 0
+          fi
+          echo "=== Patching mainline WLED driver: add LED-class lcd-backlight mirror ==="
+          echo "Why: A11 lavender framework drives brightness via /sys/class/leds/lcd-backlight,"
+          echo "     but this driver only registers a backlight-class device -> physical panel dark."
+          python3 "$GITHUB_WORKSPACE/builder/assets/patch_wled_lcd_led.py" "$WLED"
+          echo "  verify (lcd_cdev refs):"
+          grep -n "lcd_cdev" "$WLED" | head -5
+
       - name: Build kernel
         working-directory: kernel_source
         env:
@@ -1311,7 +1340,7 @@ jobs:
           name: C9-Kernel-${{ env.KERNEL_CODENAME }}-${{ env.KERNEL_RELVER }}-${{ env.DEVICE_LABEL }}-4.19
           repository: rianrizkifauzi/C9-Kernel_releases
           body: |
-            C9-Kernel-linux version-4.4
+            C9-Kernel-linux version-4.19
             Codename: ${{ env.KERNEL_CODENAME }}
             Type: Stable
 
@@ -1320,7 +1349,7 @@ jobs:
             _• Compiled using Neutron Clang (LLD) matching S0NiX stock build env._
             _• Bump to Linux ${{ env.KERNEL_VERSION }} (CIP-LTS)._
             _• Base on `${{ inputs.kernel_repo }}@${{ inputs.kernel_branch }}` (`${{ env.KERNEL_SHA }}`)._
-            _• Integrate KernelSU-Next (`${{ inputs.ksun_branch }}` @ `${{ env.KSUN_VERSION }}`, forced KSU_VERSION 33129)._
+            _• Integrate KernelSU-Next (`${{ inputs.ksun_branch }}` @ `${{ env.KSUN_VERSION }}`, forced KSU_VERSION ${{ env.FORCED_KSU_VERSION || 'source-default' }})._
             _• Apply manual hooks from kucingoranye/kernel_patches (execveat, stat, faccessat, vfs_read, sys_reboot, selinux NNP bypass)._
             _• Backport `path_umount` from kernel 5.10.9 by backslashxx (KSUN driver requirement)._
             _• AnyKernel3 flashable zip with C9 banner._
@@ -1330,7 +1359,7 @@ jobs:
             Tested on:
             _• Xiaomi Redmi Note 7 (Lavender / SDM660)._
             _• Android 11 / crDroid 7.x base ROM._
-            _• KernelSU-Next Manager v3.2.0-spoofed (33129) → Working._
+            _• KernelSU-Next Manager v3.3.0 (33223) → Working._
             _• Zygisk Next 1.3.4-746 → daemon running, both zygote injected._
 
             Full changelog : [CHANGELOG.md](https://github.com/rianrizkifauzi/C9-Kernel_xiaomi_lavender_419/blob/main/CHANGELOG.md)
